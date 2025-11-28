@@ -1,0 +1,26 @@
+{
+  "builds": [
+    {
+      "src": "index.py",
+      "use": "@vercel/python"
+    },
+    {
+      "src": "package.json",
+      "use": "@vercel/static-build"
+    }
+  ],
+  "routes": [
+    {
+      "src": "/send_attendance/(.*)",
+      "dest": "/index.py"
+    },
+    {
+      "src": "/send_timetable/(.*)",
+      "dest": "/index.py"
+    },
+    {
+      "src": "/(.*)",
+      "dest": "/index.html"
+    }
+  ]
+}

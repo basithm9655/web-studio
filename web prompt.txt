@@ -1,0 +1,1253 @@
+import math  
+  
+import numpy as np  
+import pandas as pd  
+import requests  
+from bs4 import BeautifulSoup  
+  
+def data_json(data):  
+"""  
+here we convert the data to json format calculate the amount days we have to take leave.  
+"""  
+response_data = []  
+threshold = 0.75  
+  
+for item in range(1, len(data)):    
+    item = data[item]    
+    temp = {}    
+  
+    # Extract data    
+    temp["name"] = item[0]    
+  
+    temp["total_hours"] = int(item[1])    
+    temp["exception_hour"] = int(item[2])    
+  
+    temp["total_present"] = int(item[4])    
+  
+    temp["percentage_of_attendance"] = int(item[5])    
+    # temp["percentage_of_attendance_with_exemp"] = int(item[6])    
+    # temp["percentage_of_attendance_with_med_exemp"] = int(item[7])    
+  
+    temp["attendance_from"] = item[8]    
+    temp["attendance_to"] = item[9]    
+  
+    # temp["med_exception_hour"] = math.floor(    
+    #     (    
+    #         (temp["percentage_of_attendance_with_med_exemp"] / 100)    
+    #         * temp["total_hours"]    
+    #     )    
+    #     - temp["total_present"]    
+    # )    
+    # temp["total_present_with_exemp"] = (    
+    #     temp["total_present"] + temp["exception_hour"] + temp["med_exception_hour"]    
+    # )    
+  
+    # Calculate bunker functionality    
+    if temp['percentage_of_attendance'] <= 75:    
+        temp['class_to_attend'] = math.ceil((threshold*temp['total_hours'] - temp['total_present'])/(1-threshold))    
+        
+    else:    
+        temp['class_to_bunk'] = math.floor((temp['total_present']-(threshold*temp['total_hours']))/(threshold))    
+            
+    response_data.append(temp)    
+  
+return response_data  
+  
+def return_attendance(username, pwd):  
+try:  
+session = requests.Session()  
+r = session.get("https://ecampus.psgtech.ac.in/studzone2/")  
+loginpage = session.get(r.url)  
+soup = BeautifulSoup(loginpage.text, "html.parser")  
+  
+viewstate = soup.select("#__VIEWSTATE")[0]["value"]    
+    eventvalidation = soup.select("#__EVENTVALIDATION")[0]["value"]    
+    viewstategen = soup.select("#__VIEWSTATEGENERATOR")[0]["value"]    
+  
+    item_request_body = {    
+        "__EVENTTARGET": "",    
+        "__EVENTARGUMENT": "",    
+        "__LASTFOCUS": "",    
+        "__VIEWSTATE": viewstate,    
+        "__VIEWSTATEGENERATOR": viewstategen,    
+        "__EVENTVALIDATION": eventvalidation,    
+        "rdolst": "S",    
+        "txtusercheck": username,    
+        "txtpwdcheck": pwd,    
+        "abcd3": "Login",    
+    }    
+  
+    response = session.post(    
+        url=r.url, data=item_request_body...(truncated 2840 characters)...or ele in cols]    
+            latest_sem_data.append([ele for ele in cols if ele])    
+    except:    
+        print("No results available !!")    
+  
+coursepage = "https://ecampus.psgtech.ac.in/studzone2/AttWfStudCourseSelection.aspx"    
+  
+page = session.get(coursepage)    
+soup = BeautifulSoup(page.text, "html.parser")    
+  
+data = []    
+table = soup.find("table", attrs={"id": "PDGCourse"})    
+  
+if table != None:    
+    try:    
+        rows = table.find_all("tr")    
+        for index, row in enumerate(rows):    
+            cols = row.find_all("td")    
+            cols = [ele.text.strip() for ele in cols]    
+            data.append([ele for ele in cols if ele])    
+    except:    
+        print("No Course Info available !!")    
+else:    
+    print("No Course Info available !!")    
+  
+if len(data) == 0 and len(latest_sem_data) == 0:    
+    return {"error": "No data"}    
+  
+global df    
+global latest_sem_records    
+  
+# Preprocess latest sem results if available    
+if len(latest_sem_data) != 0:    
+    latest_sem_data.pop(0)    
+    # print(latest_sem_data)    
+    latest_sem_records = pd.DataFrame(    
+        latest_sem_data,    
+        columns=[    
+            "COURSE SEM",    
+            "COURSE CODE",    
+            "COURSE TITLE",    
+            "CREDITS",    
+            "GRADE",    
+            "RESULT",    
+        ],    
+    )    
+    # print(latest_sem_records)    
+    latest_sem_records["GRADE"] = latest_sem_records["GRADE"].str.split().str[-1]    
+    # print(latest_sem_records["COURSE SEM"])    
+    latest_sem_records["COURSE SEM"] = latest_sem_records["COURSE SEM"].replace(    
+        r"^\s*$", np.nan, regex=True    
+    )    
+    # print(latest_sem_records["COURSE SEM"])    
+    latest_sem_records["COURSE SEM"].fillna(method="ffill", inplace=True)    
+    # print(latest_sem_records["COURSE SEM"])    
+  
+try:    
+    cols = data.pop(0)    
+    df = pd.DataFrame(data, columns=cols)    
+  
+    # Add latest sem results if available    
+    if len(latest_sem_data) != 0:    
+        df = df.append(latest_sem_records, ignore_index=True)    
+        df.drop_duplicates(subset="COURSE CODE", keep="last", inplace=True)    
+except:    
+    df = latest_sem_records.copy()    
+  
+# CPGA calculation    
+latest_sem = df["COURSE SEM"].max()    
+df["CREDITS"] = df["CREDITS"].astype(int)    
+df["GRADE"] = df["GRADE"].apply(gradeMap)    
+df["COURSE SCORE"] = df["GRADE"] * df["CREDITS"]    
+latest_cgpa = df["COURSE SCORE"].sum() / df["CREDITS"].sum()    
+  
+res = {"lastest_sem": latest_sem, "latest_sem_cgpa": round(latest_cgpa, 3)}    
+  
+return res  
+  
+and  
+  
+from typing import List  
+  
+import requests  
+import re  
+import math  
+from bs4 import BeautifulSoup  
+  
+from app.exceptions import (  
+AttendanceUpdateInProcessException,  
+InvalidUsernameOrPasswordException,  
+ScrappingError,  
+NoTimeTableDataException,  
+NoSemResultsAvailable,  
+)  
+from app.models import AttendanceModel, TimeTableModel, SemMarkModel  
+from .constants import GRADE_SCORE_MAP  
+  
+class AttendanceWebScrapper:  
+ECAMPUS_URL = "https://ecampus.psgtech.ac.in/studzone2/"  
+ATTENDANCE_PAGE_URL = "https://ecampus.psgtech.ac.in/studzone2/AttWfPercView.aspx"  
+TIMETABLE_PAGE_URL = "https://ecampus.psgtech.ac.in/studzone2/AttWfStudTimtab.aspx"  
+SEM_EXAM_RESULTS_PAGE_URL = (  
+"https://ecampus.psgtech.ac.in/studzone2/FrmEpsStudResult.aspx"  
+)  
+COURSE_DETAILS_PAGE_URL = (  
+"https://ecampus.psgtech.ac.in/studzone2/AttWfStudCourseSelection.aspx"  
+)  
+  
+def __init__(self, user_name, password):    
+    self.session = requests.Session()    
+    login_page = self.session.get(self.ECAMPUS_URL)    
+    soup = BeautifulSoup(login_page.text, "html.parser")    
+    item_request_body = self.generate_login_request_body(soup, user_name, password)    
+    response = self.session.post(    
+        url=login_page.url,    
+        data=item_request_body,    
+        headers={"Referer": login_page.url},    
+    )    
+  
+    if response.status_code != 200:    
+        raise ScrappingError    
+    soup = BeautifulSoup(response.text, "html.parser")    
+    message = soup.find(string=re.compile("Invalid"))    
+    if message and "Invalid" in message:    
+        raise InvalidUsernameOrPasswordException    
+  
+def convert_data_to_json(self):    
+    pass    
+  
+@staticmethod    
+def grade_score(grade: str) -> int:    
+    grades = {    
+        "O": 10,    
+        "A+": 9,    
+        "A": 8,    
+        "B+": 7,    
+        "B": 6,    
+        "C+": 5,    
+        "C": 4,    
+        "W": 0,    
+        "RA": 0,    
+        "SA": 0,    
+    }    
+    return grades.get(grade, 0)    
+  
+@staticmethod    
+def apply_the_bunker_formula(    
+    percentage_of_attendance: int,    
+    total_hours: int,    
+    total_present: int,    
+    threshold=0.75,    
+) -> dict:    
+    res = {}    
+    if percentage_of_attendance <= 75:    
+        res["class_to_attend"] = math.ceil(    
+            (threshold * total_hours - total_present) / (1 - threshold)    
+        )    
+    else:    
+        res["class_to_bunk"] = math.floor(    
+            (total_present - (threshold * total_hours)) / (threshold)    
+        )    
+    return res    
+  
+@staticmethod    
+def generate_login_request_body(    
+    soup: BeautifulSoup, user_name: str, password: str    
+) -> dict:    
+    view_state = soup.select(...(truncated 1885 characters)...T = 0    
+    CUM_CREDIT = 0    
+    for d in data[1:]:    
+        GRADE, CREDIT = GRADE_SCORE_MAP[d[6]], int(d[7])    
+        CUM_GRADE_X_CREDIT += GRADE * CREDIT    
+        CUM_CREDIT += CREDIT    
+    return SemMarkModel(    
+        latest_sem_no=data[1][4],    
+        latest_sem_cgpa=round(CUM_GRADE_X_CREDIT / CUM_CREDIT, 3),    
+    )    
+  
+@staticmethod    
+def parse_table(table: BeautifulSoup) -> list:    
+    data = []    
+    rows = table.find_all("tr")    
+    for index, row in enumerate(rows):    
+        cols = row.find_all("td")    
+        cols = [ele.text.strip() for ele in cols]    
+        data.append([ele for ele in cols if ele])    
+    return data    
+  
+def fetch_attendance(self):    
+    attendance_page = self.session.get(self.ATTENDANCE_PAGE_URL)    
+    soup = BeautifulSoup(attendance_page.text, "html.parser")    
+    table = soup.find("table", attrs={"class": "cssbody"})    
+    if table is None:    
+        message = str(soup.find("span", attrs={"id": "Message"}))    
+        if "On Process" in message:    
+            raise AttendanceUpdateInProcessException    
+  
+    return AttendanceWebScrapper.parse_table_data_as_attendance_models(    
+        self.parse_table(table)    
+    )    
+  
+def fetch_time_table(self) -> List[TimeTableModel]:    
+    time_table_page = self.session.get(self.TIMETABLE_PAGE_URL)    
+    soup = BeautifulSoup(time_table_page.text, "html.parser")    
+    table = soup.find("table", attrs={"id": "TbCourDesc"})    
+    if table is None:    
+        raise NoTimeTableDataException    
+  
+    return AttendanceWebScrapper.parse_table_data_as_timetable_models(    
+        self.parse_table(table)    
+    )    
+  
+def fetch_current_sem_exam_results(self):    
+    sem_exam_results_page = self.session.get(self.SEM_EXAM_RESULTS_PAGE_URL)    
+    soup = BeautifulSoup(sem_exam_results_page.text, "html.parser")    
+    table = soup.find("table", attrs={"id": "DgResult"})    
+    if table is None:    
+        raise NoSemResultsAvailable    
+  
+    return self.parse_table(table)    
+  
+def fetch_all_previous_semester_exam_results(self):    
+    course_details_page = self.session.get(self.COURSE_DETAILS_PAGE_URL)    
+    soup = BeautifulSoup(course_details_page.text, "html.parser")    
+    table = soup.find("table", attrs={"id": "PDGCourse"})    
+    if table is None:    
+        raise ScrappingError    
+  
+    return AttendanceWebScrapper.parse_sem_marks(self.parse_table(table))    
+  
+def fetch_previous_semester_exam_results(self):    
+    pass  
+  
+if name == "main":  
+awc = AttendanceWebScrapper(user_name="abcde", password="1234")  
+print(awc.fetch_attendance())  
+print(awc.fetch_time_table())  
+print(awc.fetch_previous_semester_exam_results())  
+  
+and  
+  
+class AttendanceUpdateInProcessException(Exception):  
+def init(self, message="Attendance not yet updated"):  
+self.message = message  
+super().init(self.message)  
+  
+class InvalidUsernameOrPasswordException(Exception):  
+def init(self, message="username or password is invalid"):  
+self.message = message  
+super().init(self.message)  
+  
+class ScrappingError(Exception):  
+def init(self, message="Status code is not 200"):  
+self.message = message  
+super().init(self.message)  
+  
+class NoTimeTableDataException(Exception):  
+def init(self, message="Time table data does not exist"):  
+self.message = message  
+super().init(self.message)  
+  
+class NoSemResultsAvailable(Exception):  
+def init(self, message="Semester exam results not yet published"):  
+self.message = message  
+super().init(self.message)  
+  
+and  
+  
+.DS_Store  
+.env  
+.flaskenv  
+*.pyc  
+.pyo  
+env/  
+venv/  
+.venv/  
+env  
+dist/  
+build/  
+*.egg  
+*.egg-info/  
+.tox/  
+.cache/  
+.pytest_cache/  
+.idea/  
+docs/_build/  
+.vscode  
+  
+.gitignore  
+  
+pycache/  
+  
+Coverage reports  
+  
+htmlcov/  
+.coverage  
+.coverage.*  
+*,cover  
+  
+and  
+  
+body {  
+  
+background-color: #222831;  
+background-image: linear-gradient(135deg, #222831 0%, #393E46 100%);  
+background-attachment: fixed;  
+  
+}  
+  
+.allButFooter {  
+min-height: calc(100vh - 40px);  
+}  
+  
+.word {  
+font-size:3em;  
+font-family: 'Press Start 2P', cursive;font-size: 40px;  
+font-weight:bold;  
+text-shadow:3px 3px 4px #000000;  
+color: #00ADB5;  
+opacity:0;  
+}  
+  
+.w1 {  
+animation: w1anim 4s infinite;  
+}  
+  
+@keyframes w1anim {  
+0%{  
+opacity: 0;  
+}  
+10%{  
+opacity: 1;  
+}  
+20% {  
+opacity:1;  
+}  
+40% {  
+opacity:1;  
+}  
+60% {  
+opacity:1;  
+}  
+80% {  
+opacity:1;  
+}  
+100% {  
+opacity:0;  
+}  
+}  
+/* Add regular styles for the button /  
+.button {  
+font-family: 'Inter', sans-serif;  
+color: #00ADB5;  
+background-color: #393E46;  
+border: 1px solid #EEEEEE;  
+border-radius: 14px;  
+padding: 10px;  
+text-align: center;  
+transition: background-color 0.3s; / Add transition for the background color */  
+}  
+  
+/* Add a different background color on hover to create a hover effect */  
+.button:hover {  
+box-shadow: 0 12px 16px 0 rgba(0,0,0,0.24),0 17px 50px 0 rgba(0,0,0,0.19);  
+background-color: #029ca4;  
+color: #EEEEEE;  
+  
+}  
+  
+/* Add a different background color when the button is clicked */  
+.button:active {  
+background-color: #026c71;  
+}  
+  
+/* Add a transition to smooth out the background color change on click /  
+.button:active {  
+transition: none; / Disable the default transition on click /  
+background-color: #01484c; / Set the background color to the clicked color */  
+}  
+  
+.card {  
+/* Add shadows to create the "card" effect */  
+margin: 0px auto;  
+background-color: #222831;  
+padding: 10px;  
+box-shadow: 0 8px 8px 0 rgba(0,0,0,0.2);  
+transition: 0.3s;  
+width: 50%;  
+  
+}  
+  
+@media screen and (max-width: 992px) {  
+.card {  
+width: 75%;  
+}  
+}  
+  
+@media screen and (max-width: 600px) {  
+.card {  
+width: 95%;  
+}  
+  
+.card h4{  
+font-size: large;  
+}  
+}  
+  
+/* On mouse-over, add a deeper shadow */  
+.card:hover {  
+box-shadow: 0 12px 16px 0 rgba(0,0,0,0.24),0 17px 50px 0 rgba(0,0,0,0.19);  
+}  
+  
+/*  
+  
+.login-dark{  
+min-height: 100%;  
+min-width: 1024px;  
+  
+width: 100%;  
+height: 100%;  
+  
+position: fixed;  
+top: 0;  
+left: 0;  
+}  
+  
+@media screen and (max-width: 1024px) {  
+.login-dark {  
+left: 50%;  
+margin-left: -512px;  
+}  
+  
+*/</DOCUMENT>  
+  
+and  
+  
+import math  
+  
+from flask import Blueprint, jsonify, request  
+  
+import bunker_mod as bk  
+  
+rest_api = Blueprint("rest_api", name, template_folder="templates")  
+  
+@rest_api.route("/send_attendance/<username>/<pwd>", methods=["POST"])  
+def send_attendance(username: str, pwd: str):  
+if request.method == "POST":  
+try:  
+try:  
+table, session = bk.return_attendance(username, pwd)  
+except:  
+table = bk.return_attendance(username, pwd)  
+  
+if (    
+            table != "Invalid password"    
+            and table != "Try again after some time"    
+            and table != "Table is being updated"    
+        ):    
+            res = bk.data_json(table)    
+  
+            return jsonify(res)    
+        else:    
+            res = {"error": "Invalid details try again"}    
+            return jsonify(res)    
+  
+    except:    
+        response = {"error": "Given input details does not match up!!"}    
+        return jsonify(response)  
+  
+@rest_api.route("/senddata_attendance", methods=["POST"])  
+def senddata_attendance():  
+try:  
+input_json = request.get_json(force=True)  
+courses = input_json["class_code"]  
+total_class = input_json["total_hours"]  
+total_present = input_json["total_present"]  
+threshold = int(input_json["threshold"])  
+threshold = threshold / 100  
+  
+if (    
+        (len(courses) == len(total_class))    
+        and (len(total_present) == len(total_class))    
+        and (len(total_present) == len(courses))    
+    ):    
+        response_data = {}    
+        for item in range(len(courses)):    
+            temp = {}    
+            temp["total_hours"] = int(total_class[item])    
+            temp["total_present"] = int(total_present[item])    
+            percentage_of_attendance = temp["total_present"] / temp["total_hours"]    
+            percentage_of_attendance = round(percentage_of_attendance, 2)    
+  
+            temp["percentage_of_attendance"] = percentage_of_attendance    
+            if (percentage_of_attendance) <= (threshold):    
+                temp["class_to_attend"] = math.ceil(    
+                    ((threshold * temp["total_hours"]) - temp["total_present"])    
+                    / (1 - threshold)    
+                )    
+  
+            else:    
+                temp["class_to_bunk"] = math.floor(    
+                    (temp["total_present"] - (threshold * temp["total_hours"]))    
+                    / (threshold)    
+                )    
+  
+            response_data[courses[item]] = temp    
+  
+        return jsonify(response_data)    
+  
+    else:    
+        response = {"error": "check input details!!"}    
+        return jsonify(response)    
+  
+except:    
+    response = {"error": "Given input details does not match up!!"}    
+    return jsonify(response)  
+  
+and  
+  
+def map_course_name_with_code(data):  
+res = {}  
+for course in data:  
+res[course.course_code] = course.course_title  
+return res  
+  
+def get_last_updated_date(data):  
+return data[0].attendance_percentage_to  
+  
+and  
+  
+from flask import Blueprint, flash, jsonify, render_template, request  
+from app.exceptions import (  
+AttendanceUpdateInProcessException,  
+InvalidUsernameOrPasswordException,  
+NoTimeTableDataException,  
+ScrappingError,  
+)  
+from app.services.ecampus_web_scrapper import AttendanceWebScrapper  
+  
+from .utils import map_course_name_with_code, get_last_updated_date  
+  
+template_page = Blueprint("template_app", name, template_folder="templates")  
+  
+@template_page.route("/", methods=["GET", "POST"])  
+def template_app():  
+if request.method == "POST":  
+username = request.form.get("usr")  
+pwd = request.form.get("pwd")  
+  
+try:    
+        awc = AttendanceWebScrapper(user_name=username, password=pwd)    
+        try:    
+            time_table = map_course_name_with_code(awc.fetch_time_table())    
+        except NoTimeTableDataException as error:    
+            time_table = None    
+  
+        try:    
+            attendance = awc.fetch_attendance()    
+            last_date_updated = get_last_updated_date(attendance)    
+        except AttendanceUpdateInProcessException as error:    
+            attendance = None    
+  
+        return render_template(    
+            "output.html",    
+            load=True,    
+            time_table=time_table,    
+            data=attendance,    
+            last_date_updated=last_date_updated,    
+        )    
+  
+    except (ScrappingError, InvalidUsernameOrPasswordException) as error:    
+        return render_template("output.html", load=False, text=error.message)    
+  
+return render_template("home.html")  
+  
+this is from the web where my senior build the website for attandance. i am just modifing that .so use the server link from here and <!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Attendance Manager</title>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Google Fonts -->
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&display=swap');
+        
+        body {
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            background-color: #0b1121;
+            color: #e2e8f0;
+            -webkit-tap-highlight-color: transparent;
+            overflow-x: hidden;
+        }
+        
+        .glass { background: rgba(11, 17, 33, 0.8); backdrop-filter: blur(16px); border-bottom: 1px solid rgba(255, 255, 255, 0.03); }
+        .glass-nav { background: rgba(11, 17, 33, 0.95); backdrop-filter: blur(20px); border-top: 1px solid rgba(255, 255, 255, 0.03); }
+        .glass-card { background: rgba(30, 41, 59, 0.4); border: 1px solid rgba(255, 255, 255, 0.05); backdrop-filter: blur(10px); }
+        .accent-gradient { background: linear-gradient(135deg, #06b6d4 0%, #3b82f6 100%); }
+        .animate-fade-in { animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+        .animate-slide-up { animation: slideUp 0.3s ease-out forwards; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideUp { from { transform: translateY(20px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
+        .hide-scrollbar::-webkit-scrollbar { display: none; }
+        .hide-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo } = React;
+
+        // --- ICONS ---
+        const Icons = {
+            User: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>,
+            Lock: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect><path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>,
+            GraduationCap: () => <svg xmlns="http://www.w3.org/2000/svg" width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M22 10v6M2 10l10-5 10 5-10 5z"></path><path d="M6 12v5c3 3 9 3 12 0v-5"></path></svg>,
+            Loader: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="animate-spin"><path d="M21 12a9 9 0 1 1-6.219-8.56"></path></svg>,
+            Settings: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.38a2 2 0 0 0-.73-2.73l-.15-.1a2 2 0 0 1-1-1.72v-.51a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"></path><circle cx="12" cy="12" r="3"></circle></svg>,
+            Home: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>,
+            Calendar: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect><line x1="16" y1="2" x2="16" y2="6"></line><line x1="8" y1="2" x2="8" y2="6"></line><line x1="3" y1="10" x2="21" y2="10"></line></svg>,
+            LogOut: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>,
+            BookOpen: () => <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z"></path><path d="M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"></path></svg>,
+            Coffee: () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 8h1a4 4 0 0 1 0 8h-1"></path><path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"></path><line x1="6" y1="1" x2="6" y2="4"></line><line x1="10" y1="1" x2="10" y2="4"></line><line x1="14" y1="1" x2="14" y2="4"></line></svg>,
+            AlertCircle: () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>,
+            Check: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>,
+            X: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>,
+            Zap: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>,
+            Trash: () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path></svg>,
+            Plus: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>,
+            Minus: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="5" y1="12" x2="19" y2="12"></line></svg>,
+            Clock: () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>,
+            History: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20v-6M6 20V10M18 20V4"></path></svg>,
+            ChevronDown: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>,
+            Sync: () => <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38"/></svg>,
+            Flash: () => <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon></svg>
+        };
+
+        // --- MOCK DATA ---
+        const generateMockData = () => [
+            { code: "19Z501", name: "Data Structures & Algo", total: 45, present: 40, credits: 4 },
+            { code: "19Z502", name: "Computer Architecture", total: 42, present: 28, credits: 3 },
+            { code: "19Z503", name: "Operating Systems", total: 38, present: 36, credits: 3 },
+            { code: "19Z504", name: "Probability & Stats", total: 50, present: 32, credits: 4 },
+            { code: "19Z505", name: "Web Technology", total: 30, present: 30, credits: 2 },
+            { code: "19Z506", name: "Machine Learning", total: 40, present: 25, credits: 3 },
+        ];
+
+        // Mock Timetable with Repeats (e.g., Wed has 19Z504 twice)
+        const generateTimetable = () => ({
+            "Mon": ["19Z501", "19Z502", "19Z504", "19Z506"],
+            "Tue": ["19Z503", "19Z505", "19Z501"],
+            "Wed": ["19Z504", "19Z504", "19Z502", "19Z506"], // Double period
+            "Thu": ["19Z501", "19Z501", "19Z503", "19Z505"], // Double period
+            "Fri": ["19Z506", "19Z502", "19Z503"],
+            "Sat": [], "Sun": []
+        });
+
+        const getMockLastUpdated = () => {
+            const now = new Date();
+            now.setHours(now.getHours() - 2); 
+            return now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+        };
+
+        const App = () => {
+            const [isLoggedIn, setIsLoggedIn] = useState(false);
+            const [username, setUsername] = useState("");
+            const [loading, setLoading] = useState(false);
+            const [data, setData] = useState([]);
+            const [timetable, setTimetable] = useState({});
+            const [threshold, setThreshold] = useState(75);
+            const [view, setView] = useState("dashboard");
+            const [selfTrackedData, setSelfTrackedData] = useState({});
+            const [lastUpdated, setLastUpdated] = useState("");
+
+            useEffect(() => {
+                const savedData = localStorage.getItem('selfTrackedData');
+                if (savedData) setSelfTrackedData(JSON.parse(savedData));
+                const savedUser = localStorage.getItem('currentUser');
+                if (savedUser) setUsername(savedUser);
+            }, []);
+
+            useEffect(() => {
+                if (Object.keys(selfTrackedData).length > 0) {
+                    localStorage.setItem('selfTrackedData', JSON.stringify(selfTrackedData));
+                }
+            }, [selfTrackedData]);
+
+            const handleLogin = (e) => {
+                e.preventDefault();
+                setLoading(true);
+                localStorage.setItem('currentUser', username);
+                setTimeout(() => {
+                    setData(generateMockData());
+                    setTimetable(generateTimetable());
+                    setLastUpdated(getMockLastUpdated());
+                    setLoading(false);
+                    setIsLoggedIn(true);
+                }, 1000);
+            };
+
+            const handleLogout = () => {
+                setIsLoggedIn(false);
+                setUsername("");
+                setData([]);
+            };
+
+            const updateSelfTracking = (courseCode, type, increment) => {
+                setSelfTrackedData(prev => {
+                    const current = prev[courseCode] || { attended: 0, bunked: 0, history: [] };
+                    let newHistory = [...(current.history || [])];
+                    let newValue = current[type];
+                    if (increment > 0) {
+                        newValue += 1;
+                        newHistory.unshift({ type: type, date: new Date().toISOString() });
+                    } else {
+                        if (newValue > 0) {
+                            newValue -= 1;
+                            const indexToRemove = newHistory.findIndex(h => h.type === type);
+                            if (indexToRemove !== -1) newHistory.splice(indexToRemove, 1);
+                        }
+                    }
+                    return { ...prev, [courseCode]: { ...current, [type]: newValue, history: newHistory } };
+                });
+            };
+
+            const calculateCombinedStatus = (course, thresholdPercent) => {
+                const manual = selfTrackedData[course.code] || { attended: 0, bunked: 0, history: [] };
+                const officialTotal = course.total;
+                const officialPresent = course.present;
+                const liveTotal = officialTotal + manual.attended + manual.bunked;
+                const livePresent = officialPresent + manual.attended;
+                const officialPercent = officialTotal ? (officialPresent / officialTotal) * 100 : 0;
+                const livePercent = liveTotal ? (livePresent / liveTotal) * 100 : 0;
+                const target = thresholdPercent / 100;
+                let result = {};
+
+                if (livePercent < thresholdPercent) {
+                    const classesToAttend = Math.ceil(((target * liveTotal) - livePresent) / (1 - target));
+                    result = { status: "danger", message: `Attend next ${classesToAttend}`, count: classesToAttend, type: "attend" };
+                } else {
+                    const classesToBunk = Math.floor((livePresent - (target * liveTotal)) / target);
+                    result = { status: classesToBunk > 0 ? "success" : "warning", message: classesToBunk > 0 ? `Safe to bunk ${classesToBunk}` : "On edge", count: classesToBunk, type: "bunk" };
+                }
+                return { officialPercent, livePercent, liveTotal, livePresent, manual, ...result };
+            };
+
+            if (!isLoggedIn) {
+                return <LoginScreen username={username} setUsername={setUsername} handleLogin={handleLogin} loading={loading} />;
+            }
+
+            return (
+                <div className="min-h-screen pb-24 relative bg-[#0b1121]">
+                    <div className="fixed inset-0 pointer-events-none z-0 bg-[radial-gradient(circle_at_15%_50%,rgba(6,182,212,0.08),transparent_25%),radial-gradient(circle_at_85%_30%,rgba(59,130,246,0.08),transparent_25%)]"></div>
+                    
+                    <header className="glass sticky top-0 z-50 px-6 py-4 flex justify-between items-center">
+                        <div className="flex items-center gap-3">
+                            <div className="w-9 h-9 rounded-full accent-gradient flex items-center justify-center text-white font-bold text-sm shadow-lg ring-2 ring-white/10">
+                                {username.charAt(0).toUpperCase() || "U"}
+                            </div>
+                            <div>
+                                <h1 className="text-sm font-bold text-white tracking-tight">Attendance Manager</h1>
+                                <p className="text-[10px] text-slate-400 font-medium">Target: <span className="text-cyan-400">{threshold}%</span></p>
+                            </div>
+                        </div>
+                    </header>
+
+                    <main className="container mx-auto max-w-2xl px-4 py-6 relative z-10">
+                        {view === 'dashboard' && <Dashboard data={data} threshold={threshold} calculateCombinedStatus={calculateCombinedStatus} updateSelfTracking={updateSelfTracking} username={username} lastUpdated={lastUpdated} />}
+                        {view === 'planner' && <PlannerView data={data} timetable={timetable} threshold={threshold} calculateCombinedStatus={calculateCombinedStatus} />}
+                        {view === 'settings' && <SettingsView threshold={threshold} setThreshold={setThreshold} handleLogout={handleLogout} setSelfTrackedData={setSelfTrackedData} />}
+                    </main>
+
+                    <nav className="fixed bottom-0 left-0 w-full glass-nav z-50 pb-safe">
+                        <div className="max-w-2xl mx-auto flex justify-around items-center h-16">
+                            <NavButton icon={<Icons.Home />} label="Home" active={view === 'dashboard'} onClick={() => setView('dashboard')} />
+                            <NavButton icon={<Icons.Calendar />} label="Planner" active={view === 'planner'} onClick={() => setView('planner')} />
+                            <NavButton icon={<Icons.Settings />} label="Settings" active={view === 'settings'} onClick={() => setView('settings')} />
+                        </div>
+                    </nav>
+                </div>
+            );
+        };
+
+        const NavButton = ({ icon, label, active, onClick }) => (
+            <button onClick={onClick} className={`flex flex-col items-center justify-center w-full h-full space-y-1 transition-all duration-300 ${active ? 'text-cyan-400 translate-y-[-2px]' : 'text-slate-500 hover:text-slate-300'}`}>
+                <div className={`${active ? 'scale-110 drop-shadow-[0_0_8px_rgba(6,182,212,0.5)]' : 'scale-100'} transition-transform duration-300`}>{icon}</div>
+                <span className="text-[10px] font-semibold tracking-wide">{label}</span>
+            </button>
+        );
+
+        const Dashboard = ({ data, threshold, calculateCombinedStatus, updateSelfTracking, username, lastUpdated }) => {
+            const [trackingMode, setTrackingMode] = useState(false);
+            return (
+                <div className="animate-fade-in space-y-6">
+                    <div className="flex justify-between items-center px-1">
+                        <div className="flex items-center gap-2 bg-slate-800/50 px-3 py-1.5 rounded-full border border-white/5">
+                            <span className="text-cyan-400 animate-pulse"><Icons.Sync /></span>
+                            <span className="text-[10px] text-slate-400 font-medium">Official Data: {lastUpdated}</span>
+                        </div>
+                    </div>
+                    <div className="relative">
+                        <div className={`transition-all duration-500 ease-in-out border rounded-2xl p-1 flex items-center justify-between ${trackingMode ? 'bg-cyan-900/20 border-cyan-500/30' : 'bg-slate-800/40 border-slate-700/50'}`}>
+                            <div className="px-4 py-2 flex-1">
+                                <div className={`text-xs font-bold uppercase tracking-wider mb-0.5 flex items-center gap-2 ${trackingMode ? 'text-cyan-400' : 'text-slate-400'}`}>
+                                    <Icons.Zap /> {trackingMode ? 'Live Tracking Active' : 'Live Tracking Off'}
+                                </div>
+                                <p className="text-[10px] text-slate-500 font-medium leading-tight">{trackingMode ? 'Tap +/- to adjust classes' : 'Enable to add manual classes'}</p>
+                            </div>
+                            <button onClick={() => setTrackingMode(!trackingMode)} className={`h-10 px-5 rounded-xl text-xs font-bold transition-all shadow-lg flex items-center gap-2 ${trackingMode ? 'bg-cyan-500 text-white shadow-cyan-500/20' : 'bg-slate-700 text-slate-300 hover:bg-slate-600'}`}>{trackingMode ? 'Done' : 'Enable'}</button>
+                        </div>
+                    </div>
+                    <div className="space-y-4">
+                        {data.map((course, idx) => <CourseCard key={course.code} course={course} threshold={threshold} calculateCombinedStatus={calculateCombinedStatus} index={idx} trackingMode={trackingMode} updateSelfTracking={updateSelfTracking} />)}
+                    </div>
+                </div>
+            );
+        };
+
+        const CourseCard = ({ course, threshold, calculateCombinedStatus, index, trackingMode, updateSelfTracking }) => {
+            const [showHistory, setShowHistory] = useState(false);
+            const stats = calculateCombinedStatus(course, threshold);
+            const { livePercent, officialPercent, status, message, count, type, manual } = stats;
+            const formatDate = (isoString) => {
+                const date = new Date(isoString);
+                const today = new Date();
+                const isToday = date.toDateString() === today.toDateString();
+                const time = date.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                return isToday ? `Today, ${time}` : `${date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}, ${time}`;
+            };
+            const getProgressColor = () => {
+                if (livePercent >= threshold + 5) return 'bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.4)]';
+                if (livePercent >= threshold) return 'bg-yellow-500 shadow-[0_0_10px_rgba(234,179,8,0.4)]';
+                return 'bg-red-500 shadow-[0_0_10px_rgba(239,68,68,0.4)]';
+            };
+            const getBorderColor = () => {
+                 if (status === 'danger') return 'border-red-500/20';
+                 if (status === 'success') return 'border-emerald-500/20';
+                 return 'border-yellow-500/20';
+            };
+            const officialWidth = Math.min(officialPercent, 100);
+            const liveWidth = Math.min(livePercent, 100);
+
+            return (
+                <div className={`glass-card rounded-2xl p-5 border transition-all duration-300 hover:transform hover:scale-[1.01] ${getBorderColor()} ${trackingMode ? 'ring-1 ring-cyan-500/30' : ''}`} style={{ animationDelay: `${index * 80}ms` }}>
+                    <div className="flex justify-between items-start mb-4">
+                        <div className="flex-1 pr-4">
+                            <div className="flex items-center gap-2 mb-1.5">
+                                <span className="text-[10px] font-bold text-slate-400 bg-slate-800/80 px-2 py-0.5 rounded-md tracking-wide">{course.code}</span>
+                                {(manual.attended > 0 || manual.bunked > 0) && <span className="text-[9px] font-bold text-cyan-300 bg-cyan-500/10 px-2 py-0.5 rounded-md flex items-center gap-1.5 border border-cyan-500/20"><div className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-pulse"></div> Live</span>}
+                            </div>
+                            <h3 className="text-white font-bold text-base leading-snug">{course.name}</h3>
+                        </div>
+                        <div className="text-right flex flex-col items-end">
+                            <div className={`text-2xl font-bold tracking-tight ${livePercent < threshold ? 'text-red-400' : 'text-emerald-400'}`}>{livePercent.toFixed(1)}%</div>
+                        </div>
+                    </div>
+                    <div className="relative w-full h-3 bg-slate-800/50 rounded-full overflow-hidden mb-4 box-border border border-white/5">
+                         {Math.abs(livePercent - officialPercent) > 0.1 && <div className="absolute top-0 left-0 h-full bg-slate-600/30 transition-all duration-700" style={{ width: `${officialWidth}%` }}></div>}
+                        <div className={`absolute top-0 left-0 h-full rounded-full transition-all duration-1000 ease-out ${getProgressColor()}`} style={{ width: `${liveWidth}%` }}></div>
+                    </div>
+                    {trackingMode ? (
+                        <div className="animate-fade-in">
+                             <div className="grid grid-cols-2 gap-3 pt-2 border-t border-white/5 mb-3">
+                                <div className="bg-emerald-500/5 rounded-xl p-2 border border-emerald-500/10 flex items-center justify-between">
+                                    <span className="text-[10px] font-bold text-emerald-400 uppercase">Attend</span>
+                                    <div className="flex items-center gap-1">
+                                        <button onClick={() => updateSelfTracking(course.code, 'attended', -1)} className="w-8 h-8 rounded-lg bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 flex items-center justify-center transition"><Icons.Minus /></button>
+                                        <span className="w-6 text-center text-sm font-bold text-white">{manual.attended}</span>
+                                        <button onClick={() => updateSelfTracking(course.code, 'attended', 1)} className="w-8 h-8 rounded-lg bg-emerald-500 text-white shadow-lg shadow-emerald-500/20 hover:bg-emerald-400 flex items-center justify-center transition"><Icons.Plus /></button>
+                                    </div>
+                                </div>
+                                <div className="bg-red-500/5 rounded-xl p-2 border border-red-500/10 flex items-center justify-between">
+                                    <span className="text-[10px] font-bold text-red-400 uppercase">Bunk</span>
+                                    <div className="flex items-center gap-1">
+                                        <button onClick={() => updateSelfTracking(course.code, 'bunked', -1)} className="w-8 h-8 rounded-lg bg-red-500/10 text-red-400 hover:bg-red-500/20 flex items-center justify-center transition"><Icons.Minus /></button>
+                                        <span className="w-6 text-center text-sm font-bold text-white">{manual.bunked}</span>
+                                        <button onClick={() => updateSelfTracking(course.code, 'bunked', 1)} className="w-8 h-8 rounded-lg bg-red-500 text-white shadow-lg shadow-red-500/20 hover:bg-red-400 flex items-center justify-center transition"><Icons.Plus /></button>
+                                    </div>
+                                </div>
+                            </div>
+                            <button onClick={() => setShowHistory(!showHistory)} className="w-full py-2 text-[10px] uppercase font-bold tracking-wider text-slate-500 hover:text-cyan-400 transition-colors flex items-center justify-center gap-2 border-t border-white/5"><Icons.History /> {showHistory ? 'Hide History' : 'View History Log'}</button>
+                            {showHistory && (
+                                <div className="mt-2 space-y-2 bg-slate-900/50 rounded-xl p-3 animate-fade-in max-h-40 overflow-y-auto">
+                                    {manual.history && manual.history.length > 0 ? manual.history.map((log, i) => (
+                                        <div key={i} className="flex justify-between items-center text-xs">
+                                            <div className="flex items-center gap-2"><div className={`w-1.5 h-1.5 rounded-full ${log.type === 'attended' ? 'bg-emerald-500' : 'bg-red-500'}`}></div><span className={log.type === 'attended' ? 'text-emerald-200' : 'text-red-200'}>{log.type === 'attended' ? 'Attended' : 'Bunked'}</span></div>
+                                            <div className="text-slate-500 flex items-center gap-1"><Icons.Clock /> {formatDate(log.date)}</div>
+                                        </div>
+                                    )) : <div className="text-center text-xs text-slate-600 py-2">No logs yet.</div>}
+                                </div>
+                            )}
+                        </div>
+                    ) : (
+                        <div className="flex items-center justify-between">
+                            <div className="text-slate-500 text-xs font-medium">{stats.livePresent} / {stats.liveTotal} Hours</div>
+                            <div className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold border ${type === 'bunk' ? (count > 0 ? 'bg-emerald-500/10 border-emerald-500/20 text-emerald-400' : 'bg-yellow-500/10 border-yellow-500/20 text-yellow-400') : 'bg-red-500/10 border-red-500/20 text-red-400'}`}>{type === 'bunk' ? <Icons.Coffee /> : <Icons.AlertCircle />}{message}</div>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const PlannerView = ({ data, timetable, threshold, calculateCombinedStatus }) => {
+            const days = ["Mon", "Tue", "Wed", "Thu", "Fri"];
+            const [selectedDays, setSelectedDays] = useState(["Mon"]);
+            const [simulations, setSimulations] = useState({});
+
+            const toggleDay = (day) => {
+                if (selectedDays.includes(day)) setSelectedDays(selectedDays.filter(d => d !== day));
+                else setSelectedDays([...selectedDays, day]);
+            };
+
+            const selectNext3Days = () => setSelectedDays(["Mon", "Tue", "Wed"]);
+            const selectFullWeek = () => setSelectedDays([...days]);
+            const clearSelection = () => { setSelectedDays([]); setSimulations({}); };
+
+            // Logic to handle repeated subjects and assign session numbers
+            const selectedClasses = useMemo(() => {
+                let sessions = [];
+                const sortedDays = selectedDays.sort((a, b) => days.indexOf(a) - days.indexOf(b));
+                
+                sortedDays.forEach((day, dayIdx) => {
+                    const codes = timetable[day] || [];
+                    
+                    // Track repeats within a single day
+                    const courseCounts = {}; 
+
+                    codes.forEach((code, idx) => {
+                        const course = data.find(c => c.code === code);
+                        if (course) {
+                            // Increment count for this specific course on this day
+                            courseCounts[code] = (courseCounts[code] || 0) + 1;
+                            
+                            sessions.push({ 
+                                ...course, 
+                                day: day, 
+                                uniqueId: `${day}-${code}-${idx}`, 
+                                sessionId: idx,
+                                period: courseCounts[code], // 1 for first time, 2 for second, etc.
+                                totalInDay: 0 // Will fill later if needed, but 'period' is enough for label
+                            });
+                        }
+                    });
+                });
+                return sessions;
+            }, [selectedDays, timetable, data]);
+
+            const handleSimulate = (uniqueId, action) => setSimulations(prev => ({ ...prev, [uniqueId]: action === prev[uniqueId] ? null : action }));
+            const bunkDay = (day) => {
+                const daySessions = selectedClasses.filter(s => s.day === day);
+                const newSims = { ...simulations };
+                daySessions.forEach(s => newSims[s.uniqueId] = 'bunk');
+                setSimulations(newSims);
+            };
+
+            const projectedStats = useMemo(() => {
+                const impactByCourse = {};
+                Object.entries(simulations).forEach(([uniqueId, action]) => {
+                    if (!action) return;
+                    const session = selectedClasses.find(s => s.uniqueId === uniqueId);
+                    if (session) {
+                        if (!impactByCourse[session.code]) impactByCourse[session.code] = { attended: 0, bunked: 0 };
+                        if (action === 'attend') impactByCourse[session.code].attended++;
+                        if (action === 'bunk') impactByCourse[session.code].bunked++;
+                    }
+                });
+                const results = [];
+                data.forEach(course => {
+                    const impact = impactByCourse[course.code];
+                    if (impact) {
+                        const currentStats = calculateCombinedStatus(course, threshold);
+                        let newTotal = currentStats.liveTotal + impact.attended + impact.bunked;
+                        let newPresent = currentStats.livePresent + impact.attended;
+                        const newPercent = newTotal ? (newPresent / newTotal) * 100 : 0;
+                        results.push({ name: course.name, code: course.code, oldPercent: currentStats.livePercent, newPercent: newPercent, diff: newPercent - currentStats.livePercent });
+                    }
+                });
+                return results;
+            }, [simulations, selectedClasses, data, calculateCombinedStatus, threshold]);
+
+            return (
+                <div className="animate-fade-in pb-24 relative">
+                    <h2 className="text-xl font-bold text-white mb-4">Planner</h2>
+                    
+                    {/* IMPACT SUMMARY (Sticky Top) */}
+                    <div className="mb-6 animate-slide-up sticky top-0 z-20 -mx-4 px-4 bg-[#0b1121]/95 backdrop-blur-sm pb-2 pt-2 border-b border-white/5">
+                        {projectedStats.length > 0 ? (
+                            <div className="glass-card bg-cyan-900/20 border border-cyan-500/20 p-4 rounded-2xl shadow-xl">
+                                <h3 className="text-cyan-400 text-xs font-bold uppercase tracking-widest mb-3 flex items-center gap-2"><Icons.Zap /> Projected Changes</h3>
+                                <div className="space-y-2">
+                                    {projectedStats.map(stat => (
+                                        <div key={stat.code} className="flex justify-between items-center text-sm">
+                                            <span className="text-slate-300 truncate w-2/3">{stat.name}</span>
+                                            <div className="flex items-center gap-2 font-bold text-xs">
+                                                <span className="text-slate-500">{stat.oldPercent.toFixed(1)}%</span>
+                                                <span className="text-slate-600">→</span>
+                                                <span className={`${stat.diff < 0 ? 'text-red-400' : 'text-emerald-400'}`}>{stat.newPercent.toFixed(1)}%</span>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="glass-card border-dashed border-slate-700/50 p-4 rounded-2xl text-center">
+                                <p className="text-xs text-slate-500">Select days & classes to see attendance impact.</p>
+                            </div>
+                        )}
+                    </div>
+
+                    {/* SELECTION & QUICK ACTIONS */}
+                    <div className="mb-4 space-y-3">
+                         <div className="flex gap-2">
+                             <button onClick={selectNext3Days} className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-[10px] font-bold text-slate-400 hover:text-white hover:border-slate-500 transition">Next 3 Days</button>
+                             <button onClick={selectFullWeek} className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-[10px] font-bold text-slate-400 hover:text-white hover:border-slate-500 transition">Full Week</button>
+                             <button onClick={clearSelection} className="px-3 py-1.5 rounded-lg bg-slate-800 border border-slate-700 text-[10px] font-bold text-red-400 hover:bg-red-500/10 transition">Clear</button>
+                         </div>
+                        
+                        <div className="flex gap-2 overflow-x-auto hide-scrollbar pb-1">
+                            {days.map(day => (
+                                <button key={day} onClick={() => toggleDay(day)} className={`px-4 py-2 rounded-xl text-xs font-bold transition-all border ${selectedDays.includes(day) ? 'bg-cyan-500 text-white border-cyan-400 shadow-lg shadow-cyan-500/20' : 'bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-600'}`}>{day}</button>
+                            ))}
+                        </div>
+                    </div>
+
+                    {/* Class List */}
+                    <div className="space-y-4">
+                        {selectedClasses.length === 0 ? (
+                            <div className="text-center py-8 text-slate-500 text-xs font-medium">Select days to view classes.</div>
+                        ) : (
+                            days.filter(d => selectedDays.includes(d)).map(day => {
+                                const daySessions = selectedClasses.filter(s => s.day === day);
+                                if (daySessions.length === 0) return null;
+                                return (
+                                    <div key={day} className="animate-slide-up mb-6">
+                                        <div className="flex justify-between items-center mb-2 px-1">
+                                            <h3 className="text-cyan-400 text-xs font-bold uppercase tracking-widest">{day}</h3>
+                                            <button onClick={() => bunkDay(day)} className="text-[10px] font-bold text-red-400 hover:text-red-300 bg-red-500/10 px-2 py-1 rounded flex items-center gap-1"><Icons.Flash /> Bunk All {day}</button>
+                                        </div>
+                                        <div className="space-y-2">
+                                            {daySessions.map((session) => (
+                                                <PlannerSessionCard 
+                                                    key={session.uniqueId} 
+                                                    session={session} 
+                                                    status={simulations[session.uniqueId]} 
+                                                    onSimulate={handleSimulate} 
+                                                />
+                                            ))}
+                                        </div>
+                                    </div>
+                                );
+                            })
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        const PlannerSessionCard = ({ session, status, onSimulate }) => {
+            return (
+                <div className={`glass-card p-3 rounded-xl border transition-all ${status ? 'border-cyan-500/30 bg-cyan-900/10' : 'border-slate-700/50'}`}>
+                    <div className="flex justify-between items-center gap-3">
+                        <div className="min-w-0 flex-1">
+                             <h4 className="text-white font-semibold text-xs truncate">{session.name}</h4>
+                             <div className="flex items-center gap-2 mt-0.5">
+                                 <span className="text-[10px] font-bold text-slate-500">{session.code}</span>
+                                 {session.period > 1 && (
+                                     <span className="text-[9px] font-bold text-amber-400 bg-amber-400/10 px-1.5 rounded">Period {session.period}</span>
+                                 )}
+                             </div>
+                        </div>
+                        <div className="flex gap-2 shrink-0">
+                            <button onClick={() => onSimulate(session.uniqueId, 'attend')} className={`w-10 h-9 rounded-lg flex items-center justify-center transition ${status === 'attend' ? 'bg-emerald-500 text-white' : 'bg-slate-800 text-slate-500 hover:bg-slate-700'}`}><Icons.Check size={16} /></button>
+                            <button onClick={() => onSimulate(session.uniqueId, 'bunk')} className={`w-10 h-9 rounded-lg flex items-center justify-center transition ${status === 'bunk' ? 'bg-red-500 text-white' : 'bg-slate-800 text-slate-500 hover:bg-slate-700'}`}><Icons.X size={16} /></button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const SettingsView = ({ threshold, setThreshold, handleLogout, setSelfTrackedData }) => (
+            <div className="animate-fade-in space-y-6">
+                <h2 className="text-2xl font-bold text-white mb-2">Settings</h2>
+                <div className="glass-card p-6 rounded-2xl">
+                    <label className="block text-sm font-medium text-slate-300 mb-6">Attendance Threshold</label>
+                    <div className="relative pt-2">
+                         <input type="range" min="50" max="90" value={threshold} onChange={(e) => setThreshold(Number(e.target.value))} className="w-full h-2 bg-slate-700 rounded-lg appearance-none cursor-pointer accent-cyan-500" />
+                         <div className="flex justify-between mt-2 text-xs text-slate-500 font-bold"><span>50%</span><span>{threshold}%</span><span>90%</span></div>
+                    </div>
+                </div>
+                 <div className="glass-card p-6 rounded-2xl">
+                    <h3 className="text-sm font-bold text-white mb-4">Data Management</h3>
+                    <button onClick={() => { setSelfTrackedData({}); localStorage.removeItem('selfTrackedData'); }} className="w-full py-3 rounded-xl bg-slate-800 text-red-400 text-xs font-bold flex items-center justify-center gap-2 hover:bg-slate-700 transition"><Icons.Trash /> Reset Live Tracking</button>
+                </div>
+                <button onClick={handleLogout} className="w-full bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 text-red-400 font-bold py-4 rounded-xl flex items-center justify-center gap-2 transition"><Icons.LogOut /> Log Out</button>
+            </div>
+        );
+
+        const LoginScreen = ({ username, setUsername, handleLogin, loading }) => (
+            <div className="min-h-screen flex flex-col items-center justify-center px-6 relative overflow-hidden bg-[#0b1121]">
+                <div className="absolute top-[-20%] left-[-10%] w-[500px] h-[500px] bg-cyan-500/20 rounded-full mix-blend-screen filter blur-[120px] opacity-30 animate-pulse"></div>
+                <div className="absolute bottom-[-20%] right-[-10%] w-[500px] h-[500px] bg-blue-600/20 rounded-full mix-blend-screen filter blur-[120px] opacity-30 animate-pulse"></div>
+
+                <div className="w-full max-w-sm z-10 animate-fade-in">
+                    <div className="text-center mb-12">
+                        <div className="inline-flex items-center justify-center w-24 h-24 rounded-3xl accent-gradient mb-8 shadow-2xl shadow-cyan-500/20 rotate-6 transform hover:rotate-0 transition-all duration-500">
+                            <Icons.GraduationCap />
+                        </div>
+                        <h1 className="text-4xl font-bold text-white mb-3 tracking-tight">Welcome Back</h1>
+                        <p className="text-slate-400 font-medium">Track better, stress less.</p>
+                    </div>
+
+                    <form onSubmit={handleLogin} className="glass-card p-8 rounded-3xl space-y-6 border border-white/5 shadow-2xl">
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold uppercase tracking-wider text-slate-400 ml-1">Student ID</label>
+                            <div className="relative text-white">
+                                <input 
+                                    type="text" 
+                                    value={username}
+                                    onChange={(e) => setUsername(e.target.value)}
+                                    className="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl px-4 py-4 pl-11 text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all font-medium"
+                                    placeholder="e.g. 19Z205"
+                                    required
+                                />
+                                <div className="absolute left-4 top-4 text-slate-500"><Icons.User /></div>
+                            </div>
+                        </div>
+
+                        <div className="space-y-2">
+                            <label className="text-xs font-bold uppercase tracking-wider text-slate-400 ml-1">Password</label>
+                            <div className="relative">
+                                <input 
+                                    type="password" 
+                                    className="w-full bg-slate-900/50 border border-slate-700/50 rounded-xl px-4 py-4 pl-11 text-white placeholder-slate-600 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all font-medium"
+                                    placeholder="••••••••"
+                                    required
+                                />
+                                <div className="absolute left-4 top-4 text-slate-500"><Icons.Lock /></div>
+                            </div>
+                        </div>
+
+                        <button 
+                            type="submit" 
+                            disabled={loading}
+                            className="w-full accent-gradient hover:opacity-90 text-white font-bold py-4 rounded-xl shadow-lg shadow-cyan-500/25 transform active:scale-[0.98] transition-all flex items-center justify-center gap-2 mt-4"
+                        >
+                            {loading ? <><Icons.Loader /> <span>Syncing...</span></> : <span>Access Portal</span>}
+                        </button>
+                    </form>
+                </div>
+            </div>
+        );
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+
+
+this is a just prototype created by me it ui and working is ok but the data and backend is a demo so use the senior code and this ui .also remove demo and give the best web to deploy in vercel .make best dont remove other features
+
+.from my web I need ui and features   .also i add planner in my ui page .but it not work .so i need scramp for time table also the same site of psg contain timetable also .so try to fix it .i also attach y college web site screen shot

@@ -1,0 +1,5 @@
+{
+  "name": "PSG Attendance Manager",
+  "description": "A modern, glassmorphic attendance tracking application with 'What-If' analysis and weekly planner capabilities, designed for PSG Tech students.",
+  "requestFramePermissions": []
+}
